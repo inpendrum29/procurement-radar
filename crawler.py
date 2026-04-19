@@ -1,4 +1,3 @@
-crawler.py
 from playwright.sync_api import sync_playwright
 from supabase import create_client
 from datetime import datetime

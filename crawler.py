@@ -22,10 +22,19 @@ def run():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        page.goto(URL)
-        page.wait_for_timeout(3000)
+        print(f"OPEN: {URL}")
+        page.goto(URL, timeout=60000)
+
+        # KLJUČNO: čekaj da se tablica pojavi
+        try:
+            page.wait_for_selector("table", timeout=20000)
+        except:
+            print("❌ TABLE NOT FOUND")
+            browser.close()
+            return
 
         rows = page.query_selector_all("table tr")
+        print(f"FOUND ROWS: {len(rows)}")
 
         for r in rows[1:]:
             cols = r.query_selector_all("td")
@@ -34,17 +43,18 @@ def run():
 
             title = clean(cols[1].inner_text())
             authority = clean(cols[2].inner_text())
-
-            ext_id = clean(cols[0].inner_text()) or gen_id(title)
+            ext_id = clean(cols[0].inner_text()) or gen_id(title + authority)
 
             item = {
                 "external_id": ext_id,
                 "title": title,
                 "authority_name": authority,
                 "type": "EOJN",
+                "estimated_value": 0,
                 "year": datetime.now().year,
                 "published_at": datetime.now().date().isoformat(),
-                "status": "new"
+                "status": "new",
+                "source": "EOJN"
             }
 
             existing = supabase.table("procurement_records") \
@@ -55,6 +65,8 @@ def run():
             if not existing.data:
                 supabase.table("procurement_records").insert(item).execute()
                 print("NEW:", title)
+            else:
+                print("SKIP:", title)
 
         browser.close()
 

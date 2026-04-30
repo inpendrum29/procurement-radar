@@ -20,21 +20,32 @@ def gen_id(text):
 def run():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+
         page = browser.new_page()
 
-        print(f"OPEN: {URL}")
+        print("OPENING PAGE...")
         page.goto(URL, timeout=60000)
 
-        # KLJUČNO: čekaj da se tablica pojavi
-        try:
-            page.wait_for_selector("table", timeout=20000)
-        except:
-            print("❌ TABLE NOT FOUND")
+        # 🔥 KLJUČNO: čekaj da se DOM stvarno učita
+        page.wait_for_load_state("networkidle")
+
+        # 🔥 dodatno čekanje jer EOJN kasni
+        page.wait_for_timeout(5000)
+
+        html = page.content()
+
+        if "table" not in html:
+            print("❌ TABLE NOT FOUND IN HTML")
             browser.close()
             return
 
         rows = page.query_selector_all("table tr")
         print(f"FOUND ROWS: {len(rows)}")
+
+        if len(rows) == 0:
+            print("❌ NO ROWS FOUND")
+            browser.close()
+            return
 
         for r in rows[1:]:
             cols = r.query_selector_all("td")

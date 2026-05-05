@@ -4,35 +4,55 @@ from datetime import datetime
 import hashlib
 import os
 
-print("🚀 API CRAWLER START")
+print("🚀 EOJN API CRAWLER")
 
 SUPABASE_URL = "https://keqavonqytzwxbrygwqc.supabase.co"
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-API_URL = "https://eojn.hr/api/planovi-nabave"
+URL = "https://eojn.hr/planovi-nabave"
 
 def gen_id(text):
     return hashlib.md5(text.encode()).hexdigest()
 
 def run():
-    print("📡 FETCHING EOJN API...")
+    print("📡 LOADING PAGE")
 
-    resp = requests.get(API_URL)
+    session = requests.Session()
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+    }
+
+    # prvo otvorimo stranicu (cookie/session)
+    session.get(URL, headers=headers)
+
+    # pravi endpoint koji EOJN koristi (search API)
+    api_url = "https://eojn.hr/planovi-nabave/api/search"
+
+    payload = {
+        "page": 1,
+        "size": 50
+    }
+
+    resp = session.post(api_url, json=payload, headers=headers)
 
     if resp.status_code != 200:
         print("❌ API ERROR:", resp.status_code)
+        print(resp.text)
         return
 
     data = resp.json()
 
-    print(f"FOUND RECORDS: {len(data)}")
+    items = data.get("content", [])
 
-    for item_raw in data:
+    print(f"FOUND RECORDS: {len(items)}")
 
+    for item_raw in items:
         title = item_raw.get("naziv", "N/A")
-        authority = item_raw.get("narucitelj", "N/A")
+        authority = item_raw.get("naruciteljNaziv", "N/A")
 
         ext_id = item_raw.get("id") or gen_id(title + authority)
 

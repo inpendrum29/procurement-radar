@@ -1,86 +1,63 @@
-print("CRAWLER FILE STARTED")
-from playwright.sync_api import sync_playwright
+import requests
 from supabase import create_client
 from datetime import datetime
 import hashlib
 import os
+
+print("🚀 API CRAWLER START")
 
 SUPABASE_URL = "https://keqavonqytzwxbrygwqc.supabase.co"
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-URL = "https://eojn.hr/planovi-nabave"
-
-def clean(t):
-    return t.strip() if t else ""
+API_URL = "https://eojn.hr/api/planovi-nabave"
 
 def gen_id(text):
     return hashlib.md5(text.encode()).hexdigest()
 
 def run():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+    print("📡 FETCHING EOJN API...")
 
-        page = browser.new_page()
+    resp = requests.get(API_URL)
 
-        print("OPENING PAGE...")
-        page.goto(URL, timeout=60000)
+    if resp.status_code != 200:
+        print("❌ API ERROR:", resp.status_code)
+        return
 
-        # 🔥 KLJUČNO: čekaj da se DOM stvarno učita
-        page.wait_for_load_state("networkidle")
+    data = resp.json()
 
-        # 🔥 dodatno čekanje jer EOJN kasni
-        page.wait_for_timeout(5000)
+    print(f"FOUND RECORDS: {len(data)}")
 
-        html = page.content()
+    for item_raw in data:
 
-        if "table" not in html:
-            print("❌ TABLE NOT FOUND IN HTML")
-            browser.close()
-            return
+        title = item_raw.get("naziv", "N/A")
+        authority = item_raw.get("narucitelj", "N/A")
 
-        rows = page.query_selector_all("table tr")
-        print(f"FOUND ROWS: {len(rows)}")
+        ext_id = item_raw.get("id") or gen_id(title + authority)
 
-        if len(rows) == 0:
-            print("❌ NO ROWS FOUND")
-            browser.close()
-            return
+        item = {
+            "external_id": str(ext_id),
+            "title": title,
+            "authority_name": authority,
+            "type": "EOJN",
+            "estimated_value": 0,
+            "year": datetime.now().year,
+            "published_at": datetime.now().date().isoformat(),
+            "status": "new",
+            "source": "EOJN"
+        }
 
-        for r in rows[1:]:
-            cols = r.query_selector_all("td")
-            if len(cols) < 3:
-                continue
+        existing = supabase.table("procurement_records") \
+            .select("id") \
+            .eq("external_id", item["external_id"]) \
+            .execute()
 
-            title = clean(cols[1].inner_text())
-            authority = clean(cols[2].inner_text())
-            ext_id = clean(cols[0].inner_text()) or gen_id(title + authority)
-
-            item = {
-                "external_id": ext_id,
-                "title": title,
-                "authority_name": authority,
-                "type": "EOJN",
-                "estimated_value": 0,
-                "year": datetime.now().year,
-                "published_at": datetime.now().date().isoformat(),
-                "status": "new",
-                "source": "EOJN"
-            }
-
-            existing = supabase.table("procurement_records") \
-                .select("id") \
-                .eq("external_id", item["external_id"]) \
-                .execute()
-
-            if not existing.data:
-                supabase.table("procurement_records").insert(item).execute()
-                print("NEW:", title)
-            else:
-                print("SKIP:", title)
-
-        browser.close()
+        if not existing.data:
+            supabase.table("procurement_records").insert(item).execute()
+            print("NEW:", title)
+        else:
+            print("SKIP:", title)
 
 if __name__ == "__main__":
     run()
